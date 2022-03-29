@@ -250,6 +250,8 @@ contract OxSolidStakerStrategy is BaseStrategy {
             uint256 _half = oxdBalance.mul(5000).div(MAX_BPS);
 
             // Swap half of OXD for bveOXD
+            // TODO: Dinamically choose between swapping or depositing for bveOXD
+            //       based on slippage conditions
             route[] memory routeArray = new route[](1);
             routeArray[0] = route(address(OXD), address(BVEOXD), false); // Volatile pool
             SOLIDLY_ROUTER.swapExactTokensForTokens(

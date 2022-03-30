@@ -21,9 +21,10 @@ contract OxSolidStakerStrategy is BaseStrategy {
 
     bool public claimRewardsOnWithdrawAll;
     IVault public bBveOxd_Oxd;
+    IVault public bveOXD;
     mapping(address => bool) hasRouterApprovals;
 
-    // slippage tolerance 0.5% (divide by MAX_BPS) - Changeable by Governance or Strategist
+    // slippage tolerance 98% (divide by MAX_BPS) - Changeable by Governance or Strategist
     uint256 public sl;
 
     IMultiRewards public constant OXSOLID_REWARDS =
@@ -59,14 +60,16 @@ contract OxSolidStakerStrategy is BaseStrategy {
 
         want = address(OXSOLID);
         bBveOxd_Oxd = IVault(_bBveOxd_Oxd);
+        bveOXD = IVault(address(BVEOXD));
 
         claimRewardsOnWithdrawAll = true;
 
-        // Set default slippage value
-        sl = 50;
+        // Set default slippage value (98%)
+        sl = 9_800;
 
         OXSOLID.safeApprove(address(OXSOLID_REWARDS), type(uint256).max);
         OXD.safeApprove(address(SOLIDLY_ROUTER), type(uint256).max);
+        OXD.safeApprove(address(BVEOXD), type(uint256).max);
         SOLID.safeApprove(address(SOLIDLY_ROUTER), type(uint256).max);
         BVEOXD.safeApprove(address(SOLIDLY_ROUTER), type(uint256).max);
         WFTM.safeApprove(address(SOLIDLY_ROUTER), type(uint256).max);
@@ -249,18 +252,35 @@ contract OxSolidStakerStrategy is BaseStrategy {
         if (oxdBalance > 0) {
             uint256 _half = oxdBalance.mul(5000).div(MAX_BPS);
 
-            // Swap half of OXD for bveOXD
-            // TODO: Dinamically choose between swapping or depositing for bveOXD
-            //       based on slippage conditions
-            route[] memory routeArray = new route[](1);
-            routeArray[0] = route(address(OXD), address(BVEOXD), false); // Volatile pool
-            SOLIDLY_ROUTER.swapExactTokensForTokens(
-                _half,
-                0,
-                routeArray,
-                address(this),
-                block.timestamp
+            // Get bveOXD/OXD pool's reserves ratio
+            uint256 ratio = getSolidlyPoolRatio(
+                address(OXD),
+                address(BVEOXD),
+                false
             );
+
+            // Estimate the amounts required for liquidity provision
+            uint256 amount_bveOXD = oxdBalance.mul(MAX_BPS).div(MAX_BPS + ratio);
+            uint256 amount_OXD = oxdBalance - amount_bveOXD;
+
+            // Check if swap quote is within the slippage tolerance from the 
+            // required amount, otherwise deposit on bveOXD directly
+            (uint256 solidlyQuote,) = IBaseV1Router01(SOLIDLY_ROUTER)
+                .getAmountOut(amount_OXD, address(OXD), address(BVEOXD));
+
+            if (solidlyQuote >= amount_bveOXD.mul(sl).div(MAX_BPS)) {
+                route[] memory routeArray = new route[](1);
+                routeArray[0] = route(address(OXD), address(BVEOXD), false); // Volatile pool
+                SOLIDLY_ROUTER.swapExactTokensForTokens(
+                    amount_OXD,
+                    0,
+                    routeArray,
+                    address(this),
+                    block.timestamp
+                );
+            } else {
+                bveOXD.deposit(amount_bveOXD);
+            }
 
             // Add liquidity to the bveOXD/OXD LP Volatile pool
             uint256 bveOXDIn = BVEOXD.balanceOf(address(this));
@@ -319,6 +339,20 @@ contract OxSolidStakerStrategy is BaseStrategy {
     // ====================
     // ===== Swapping =====
     // ====================
+
+    /// @dev View function to find the reserves ratio of a certain pool on Solidly
+    function getSolidlyPoolRatio(
+        address tokenA,
+        address tokenB,
+        bool volatile
+    ) public view returns (uint256) {
+        (uint256 reservesA, uint256 reservesB) = SOLIDLY_ROUTER.getReserves(
+            tokenA,
+            tokenB,
+            volatile
+        );
+        return reservesA.mul(MAX_BPS).div(reservesB);
+    }
 
     /// @dev View function for testing the routing of the strategy
     function findOptimalSwap(

@@ -250,8 +250,6 @@ contract OxSolidStakerStrategy is BaseStrategy {
         // OXD --> bBveOxd_Oxd
         uint256 oxdBalance = OXD.balanceOf(address(this));
         if (oxdBalance > 0) {
-            uint256 _half = oxdBalance.mul(5000).div(MAX_BPS);
-
             // Get bveOXD/OXD pool's reserves ratio
             uint256 ratio = getSolidlyPoolRatio(
                 address(OXD),

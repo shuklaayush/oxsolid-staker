@@ -24,7 +24,7 @@ contract OxSolidStakerStrategy is BaseStrategy {
     IVault public bveOXD;
     mapping(address => bool) hasRouterApprovals;
 
-    // slippage tolerance 98% (divide by MAX_BPS) - Changeable by Governance or Strategist
+    // slippage tolerance 95% (divide by MAX_BPS) - Changeable by Governance or Strategist
     uint256 public sl;
 
     IMultiRewards public constant OXSOLID_REWARDS =
@@ -64,8 +64,8 @@ contract OxSolidStakerStrategy is BaseStrategy {
 
         claimRewardsOnWithdrawAll = true;
 
-        // Set default slippage value (98%)
-        sl = 9_800;
+        // Set default slippage value (95%)
+        sl = 9_500;
 
         OXSOLID.safeApprove(address(OXSOLID_REWARDS), type(uint256).max);
         OXD.safeApprove(address(SOLIDLY_ROUTER), type(uint256).max);
